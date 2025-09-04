@@ -1,24 +1,2 @@
-# Telegram bot kutubxonasi
-aiogram>=3.1.0
-
-# Web interfeys / API
-fastapi>=0.111.1
-
-# ASGI server
-uvicorn>=0.23.2
-
-# Fayllar bilan ishlash
-aiofiles~=23.1.0
-aiohttp~=3.8.6
-
-# Pydantic (pre-built wheels, Rust kerak emas)
-pydantic==2.11.7
-pydantic-core==2.33.2
-
-# Python tiplarini kengaytirish
-typing-extensions>=4.12.2
-
-# Qo‘shimcha kutubxonalar
-certifi>=2023.7.22
-magic-filter~=1.0.12
-starlette<0.38.0,>=0.37.2
+aiogram==3.22.0
+requests
