@@ -629,9 +629,12 @@ async def topup_custom_amount(message: Message, state: FSMContext):
 # =======================
 # MAIN
 # =======================
+@dp.message(commands=["start"])
+async def start_command(message: types.Message):
+    await message.answer("Bot ishlayapti ✅")
+
 async def main():
-    init_db()
-    print("🚀 Bot ишга тушди...")
+    print("Bot ishga tushdi...")
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
