@@ -2,10 +2,10 @@
 aiogram>=3.1.0
 
 # Web interfeys / API
-fastapi==0.111.1
+fastapi>=0.111.1
 
 # ASGI server
-uvicorn==0.23.2
+uvicorn>=0.23.2
 
 # Fayllar bilan ishlash
 aiofiles~=23.1.0
