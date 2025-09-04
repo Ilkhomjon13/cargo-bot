@@ -1,3 +1,21 @@
-aiogram==3.1.0
+# Telegram bot kutubxonasi
+aiogram>=3.1.0
+
+# Web interfeys / API
 fastapi==0.111.1
+
+# ASGI server
 uvicorn==0.23.2
+
+# Fayllar bilan ishlash uchun
+aiofiles~=23.1.0
+
+# Python tiplarini kengaytirish uchun
+typing-extensions==4.8.0
+
+# Kerakli qo‘shimcha kutubxonalar
+aiohttp~=3.8.6
+certifi>=2023.7.22
+magic-filter~=1.0.12
+pydantic<3,>=2.1.1
+starlette<0.38.0,>=0.37.2
