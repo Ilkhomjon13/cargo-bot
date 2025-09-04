@@ -7,15 +7,18 @@ fastapi==0.111.1
 # ASGI server
 uvicorn==0.23.2
 
-# Fayllar bilan ishlash uchun
+# Fayllar bilan ishlash
 aiofiles~=23.1.0
+aiohttp~=3.8.6
 
-# Python tiplarini kengaytirish uchun
+# Pydantic (pre-built wheels, Rust kerak emas)
+pydantic==2.11.7
+pydantic-core==2.33.2
+
+# Python tiplarini kengaytirish
 typing-extensions==4.8.0
 
-# Kerakli qo‘shimcha kutubxonalar
-aiohttp~=3.8.6
+# Qo‘shimcha kutubxonalar
 certifi>=2023.7.22
 magic-filter~=1.0.12
-pydantic<3,>=2.1.1
 starlette<0.38.0,>=0.37.2
