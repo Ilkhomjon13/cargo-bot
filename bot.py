@@ -9,6 +9,7 @@
 #  - Yangi ro‘yxatdan o‘tgan haydovchiga 99 000 so‘m bonus
 #  - Mijozdan telefon so‘raladi; haydovchi qabul qilgach, username + telefon beriladi
 
+import os
 import asyncio
 import sqlite3
 import re
