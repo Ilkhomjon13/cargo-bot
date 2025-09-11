@@ -614,30 +614,22 @@ async def driver_balance(message: Message):
 
 @router.message(F.text == "📞 Админ билан боғланиш")
 async def contact_admin(message: Message):
-    with closing(db()) as conn:
-        # Adminlar ma'lumotini bazadan olish
-        admins = conn.execute(
-            "SELECT driver_id AS id, username, phone FROM drivers WHERE driver_id IN ({seq})".format(
-                seq=",".join("?"*len(ADMIN_IDS))
-            ),
-            tuple(ADMIN_IDS)
-        ).fetchall()
-
-    if not admins:
+    if not ADMIN_IDS:
         await message.answer("❌ Админлар топилмади.")
         return
 
     text_lines = ["📞 Админлар билан боғланиш:\n"]
     keyboard = InlineKeyboardMarkup(row_width=1)
 
-    for admin in admins:
-        uname = admin["username"] or f"id:{admin['id']}"
-        phone = admin["phone"] or "telefon ko‘rsatilmagan"
+    for aid in ADMIN_IDS:
+        uname = f"Admin_{aid}"  # agar username yo‘q bo‘lsa
+        # Telefonni qo‘lda qo‘shish mumkin, masalan:
+        phone = "+998901234567" if aid == 1262207928 else "+998901234568"
         text_lines.append(f"{uname} - {phone}")
         keyboard.add(
             InlineKeyboardButton(
                 text=f"{uname}га ёзиш",
-                url=f"https://t.me/{admin['username'].lstrip('@')}" if admin["username"] else f"tg://user?id={admin['id']}"
+                url=f"tg://user?id={aid}"
             )
         )
 
