@@ -15,6 +15,7 @@ from aiogram.types import (
     InlineKeyboardMarkup, InlineKeyboardButton,
     CallbackQuery
 )
+from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import StatesGroup, State
 from datetime import datetime
@@ -614,24 +615,26 @@ async def driver_balance(message: Message):
 
 @router.message(F.text == "📞 Админ билан боғланиш")
 async def contact_admin(message: Message):
-    if not ADMIN_IDS:
-        await message.answer("❌ Админлар топилмади.")
-        return
-
     text_lines = ["📞 Админлар билан боғланиш:\n"]
     keyboard = InlineKeyboardMarkup(row_width=1)
 
-    for aid in ADMIN_IDS:
-        uname = f"Admin_{aid}"  # agar username yo‘q bo‘lsa
-        # Telefonni qo‘lda qo‘shish mumkin, masalan:
-        phone = "+998901234567" if aid == 1262207928 else "+998901234568"
-        text_lines.append(f"{uname} - {phone}")
-        keyboard.add(
-            InlineKeyboardButton(
-                text=f"{uname}га ёзиш",
-                url=f"tg://user?id={aid}"
-            )
+    # Admin 1
+    text_lines.append("@zaaaza13 - +998330131992")
+    keyboard.add(
+        InlineKeyboardButton(
+            text="@zaaaza13га ёзиш",
+            url="tg://user?id=1262207928"  # Telegram ID kiritish kerak, username emas
         )
+    )
+
+    # Admin 2
+    text_lines.append("@dezard7177 - +998885131111")
+    keyboard.add(
+        InlineKeyboardButton(
+            text="@dezard7177га ёзиш",
+            url="tg://user?id=2055044676"  # Telegram ID kiritish kerak, username emas
+        )
+    )
 
     text = "\n".join(text_lines)
     await message.answer(text, reply_markup=keyboard)
