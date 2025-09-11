@@ -615,7 +615,7 @@ async def driver_balance(message: Message):
 @router.message(F.text == "📞 Админ билан боғланиш")
 async def contact_admin(message: Message):
     admins = ", ".join([f"<a href='tg://user?id={aid}'>@zaaaza13</a>" for aid in ADMIN_IDS])
-    await message.answer(f"📞 Админлар билан боғланиш: {@mirzayev707}", disable_web_page_preview=True)
+    await message.answer(f"📞 Админлар билан боғланиш: {admins}", disable_web_page_preview=True)
 
 # =======================
 # ADMIN: lists, block/unblock, balance topup
