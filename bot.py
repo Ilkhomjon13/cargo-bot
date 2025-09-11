@@ -15,7 +15,6 @@ from aiogram.types import (
     InlineKeyboardMarkup, InlineKeyboardButton,
     CallbackQuery
 )
-from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import StatesGroup, State
 from datetime import datetime
@@ -615,29 +614,8 @@ async def driver_balance(message: Message):
 
 @router.message(F.text == "📞 Админ билан боғланиш")
 async def contact_admin(message: Message):
-    text_lines = ["📞 Админлар билан боғланиш:\n"]
-    keyboard = InlineKeyboardMarkup(row_width=1)
-
-    # Admin 1
-    text_lines.append("@zaaaza13 - +998330131992")
-    keyboard.add(
-        InlineKeyboardButton(
-            text="@zaaaza13га ёзиш",
-            url="tg://user?id=1262207928"  # Telegram ID kiritish kerak, username emas
-        )
-    )
-
-    # Admin 2
-    text_lines.append("@dezard7177 - +998885131111")
-    keyboard.add(
-        InlineKeyboardButton(
-            text="@dezard7177га ёзиш",
-            url="tg://user?id=2055044676"  # Telegram ID kiritish kerak, username emas
-        )
-    )
-
-    text = "\n".join(text_lines)
-    await message.answer(text, reply_markup=keyboard)
+    admins = ", ".join([f"<a href='tg://user?id={aid}'>@zaaaza13</a>" for aid in ADMIN_IDS])
+    await message.answer(f"📞 Админлар билан боғланиш: {@mirzayev707}", disable_web_page_preview=True)
 
 # =======================
 # ADMIN: lists, block/unblock, balance topup
