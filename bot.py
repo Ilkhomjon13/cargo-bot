@@ -614,8 +614,17 @@ async def driver_balance(message: Message):
 
 @router.message(F.text == "📞 Админ билан боғланиш")
 async def contact_admin(message: Message):
-    admins = ", ".join([f"<a href='tg://user?id={aid}'>Admin</a>" for aid in ADMIN_IDS])
-    await message.answer(f"📞 Админлар билан боғланиш: {admins}", disable_web_page_preview=True)
+    admins_info = [
+        {"name": "Admin1", "tg": "@zaaaza13", "phone": "+998330131992"},
+        {"name": "Admin2", "tg": "@dezard7177", "phone": "+998885131111"},
+    ]
+    text = "📞 Админлар билан боғланиш:\n\n"
+    keyboard = InlineKeyboardMarkup(row_width=1)
+    for admin in admins_info:
+        text += f"{admin['name']} - {admin['phone']}\n"
+        keyboard.add(InlineKeyboardButton(text=f"{admin['name']}га ёзиш", url=f"https://t.me/{admin['tg']}"))
+    await message.answer(text, reply_markup=keyboard)
+
 
 # =======================
 # ADMIN: lists, block/unblock, balance topup
