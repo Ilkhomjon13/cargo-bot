@@ -614,17 +614,35 @@ async def driver_balance(message: Message):
 
 @router.message(F.text == "📞 Админ билан боғланиш")
 async def contact_admin(message: Message):
-    admins_info = [
-        {"name": "Admin1", "tg": "@zaaaza13", "phone": "+998330131992"},
-        {"name": "Admin2", "tg": "@dezard7177", "phone": "+998885131111"},
-    ]
-    text = "📞 Админлар билан боғланиш:\n\n"
-    keyboard = InlineKeyboardMarkup(row_width=1)
-    for admin in admins_info:
-        text += f"{admin['name']} - {admin['phone']}\n"
-        keyboard.add(InlineKeyboardButton(text=f"{admin['name']}га ёзиш", url=f"https://t.me/{admin['tg']}"))
-    await message.answer(text, reply_markup=keyboard)
+    with closing(db()) as conn:
+        # Adminlar ma'lumotini bazadan olish
+        admins = conn.execute(
+            "SELECT driver_id AS id, username, phone FROM drivers WHERE driver_id IN ({seq})".format(
+                seq=",".join("?"*len(ADMIN_IDS))
+            ),
+            tuple(ADMIN_IDS)
+        ).fetchall()
 
+    if not admins:
+        await message.answer("❌ Админлар топилмади.")
+        return
+
+    text_lines = ["📞 Админлар билан боғланиш:\n"]
+    keyboard = InlineKeyboardMarkup(row_width=1)
+
+    for admin in admins:
+        uname = admin["username"] or f"id:{admin['id']}"
+        phone = admin["phone"] or "telefon ko‘rsatilmagan"
+        text_lines.append(f"{uname} - {phone}")
+        keyboard.add(
+            InlineKeyboardButton(
+                text=f"{uname}га ёзиш",
+                url=f"https://t.me/{admin['username'].lstrip('@')}" if admin["username"] else f"tg://user?id={admin['id']}"
+            )
+        )
+
+    text = "\n".join(text_lines)
+    await message.answer(text, reply_markup=keyboard)
 
 # =======================
 # ADMIN: lists, block/unblock, balance topup
