@@ -25,7 +25,7 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 # SETTINGS
 # =======================
 BOT_TOKEN = "7370665741:AAEbYoKM5_S2XLDGLqO2re8hnPeAUhjSF7g"  # <-- tokenni shu yerga yozing
-ADMIN_IDS = {1262207928, 2055044676, 7370665741}
+ADMIN_IDS = {1262207928, 2055044676, 8011859232}
 DB_FILE = "cargoof.db"
 
 bot = Bot(token=BOT_TOKEN, default=DefaultBotProperties(parse_mode="HTML"))
