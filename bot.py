@@ -23,7 +23,7 @@ from datetime import datetime
 # SETTINGS (o'zgartiring kerak bo'lsa)
 # =======================
 BOT_TOKEN = "7370665741:AAEbYoKM5_S2XLDGLqO2re8hnPeAUhjSF7g"
-ADMIN_IDS = {1262207928, 2055044676}
+ADMIN_IDS = {1262207928, 2055044676, 7370665741}
 DB_FILE = "cargoN.db"
 
 bot = Bot(token=BOT_TOKEN, default=DefaultBotProperties(parse_mode="HTML"))
