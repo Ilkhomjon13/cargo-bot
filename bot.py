@@ -1,30 +1,32 @@
 # -*- coding: utf-8 -*-
-# Namangan Cargo Bot — aiogram 3.22.0
-# Rolllar: Mijoz, Ҳайдовчи, Админ
-# DB: SQLite (cargoN.db)
+# Namangan Cargo Bot — aiogram 3.22.0 (to'liq, kvitansiya bilan)
+# Rollar: Mijoz, Ҳайдовчи, Админ
+# DB: SQLite (cargoB.db)
 
 import asyncio
 import sqlite3
 import re
 from contextlib import closing
+from datetime import datetime
+
 from aiogram import Bot, Dispatcher, Router, F
 from aiogram.client.default import DefaultBotProperties
 from aiogram.filters import CommandStart
 from aiogram.types import (
     Message, ReplyKeyboardMarkup, KeyboardButton,
     InlineKeyboardMarkup, InlineKeyboardButton,
-    CallbackQuery
+    CallbackQuery, ReplyKeyboardRemove
 )
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import StatesGroup, State
-from datetime import datetime
+from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 # =======================
-# SETTINGS (o'zgartiring kerak bo'lsa)
+# SETTINGS
 # =======================
-BOT_TOKEN = "7370665741:AAEbYoKM5_S2XLDGLqO2re8hnPeAUhjSF7g"
+BOT_TOKEN = "7370665741:AAEbYoKM5_S2XLDGLqO2re8hnPeAUhjSF7g"  # <-- tokenni shu yerga yozing
 ADMIN_IDS = {1262207928, 2055044676, 7370665741}
-DB_FILE = "cargoN.db"
+DB_FILE = "cargoof.db"
 
 bot = Bot(token=BOT_TOKEN, default=DefaultBotProperties(parse_mode="HTML"))
 dp = Dispatcher()
@@ -39,12 +41,8 @@ def db():
     conn.row_factory = sqlite3.Row
     return conn
 
-def _column_exists(conn, table: str, col: str) -> bool:
-    cols = conn.execute(f"PRAGMA table_info({table})").fetchall()
-    return any(c["name"] == col for c in cols)
-
 def init_db():
-    with closing(db()) as conn, conn:
+    with closing(db()) as conn:
         cur = conn.cursor()
         # orders
         cur.execute("""
@@ -63,7 +61,7 @@ def init_db():
             customer_username TEXT,
             customer_phone TEXT,
             commission INTEGER,
-            creator_role TEXT DEFAULT 'customer' -- who created: customer/driver
+            creator_role TEXT DEFAULT 'customer'
         )""")
         # drivers
         cur.execute("""
@@ -72,7 +70,7 @@ def init_db():
             username TEXT,
             phone TEXT,
             balance REAL DEFAULT 0,
-            status TEXT DEFAULT 'active' -- active / blocked
+            status TEXT DEFAULT 'active'
         )""")
         # customers
         cur.execute("""
@@ -80,7 +78,16 @@ def init_db():
             user_id INTEGER PRIMARY KEY,
             username TEXT,
             phone TEXT,
-            status TEXT DEFAULT 'active' -- active / blocked
+            status TEXT DEFAULT 'active'
+        )""")
+        # receipts (kvitansiyalar)
+        cur.execute("""
+        CREATE TABLE IF NOT EXISTS receipts(
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            driver_id INTEGER,
+            file_id TEXT,
+            status TEXT DEFAULT 'pending', -- pending / approved / rejected
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )""")
         conn.commit()
 
@@ -119,7 +126,8 @@ def driver_menu_kb():
         keyboard=[
             [KeyboardButton(text="📝 Янгидан буюртма")],
             [KeyboardButton(text="📜 Бўш буюртмалар")],
-            [KeyboardButton(text="💰 Баланс"), KeyboardButton(text="📞 Админ билан боғланиш")],
+            [KeyboardButton(text="💰 Баланс"), KeyboardButton(text="💳 Баланс тўлдириш (квитансия)")],
+            [KeyboardButton(text="📞 Админ билан боғланиш")],
             [KeyboardButton(text="🏠 Бош меню")]
         ],
         resize_keyboard=True
@@ -175,6 +183,9 @@ class AdminTopUpData(StatesGroup):
     target_driver = State()
     custom_amount = State()
 
+class ReceiptApproval(StatesGroup):
+    custom_amount = State()  # admin enters custom amount for a receipt
+
 # =======================
 # HELPERS
 # =======================
@@ -184,7 +195,6 @@ def list_active_driver_ids() -> list[int]:
         return [r["driver_id"] for r in rows]
 
 async def push_new_order_to_drivers(order_row: sqlite3.Row):
-    """Admin комиссия белгилагандан кейин — барча active haydovchilarga push."""
     fee = order_row["commission"] or 0
     kb = InlineKeyboardMarkup(inline_keyboard=[[
         InlineKeyboardButton(text="✅ Қабул қилиш", callback_data=f"accept:{order_row['id']}"),
@@ -207,7 +217,6 @@ async def push_new_order_to_drivers(order_row: sqlite3.Row):
             pass
 
 def format_order_row(r: sqlite3.Row) -> str:
-    """Chiroyli holda buyurtma matnini qaytaradi (ustunlarga bo'lingan)."""
     fee = r["commission"] if r["commission"] is not None else "—"
     driver_line = f"🚖 Haydovchi: {r['driver_id']}" if r["driver_id"] else "🚖 Haydovchi: —"
     username = r["customer_username"] or "—"
@@ -226,13 +235,11 @@ def format_order_row(r: sqlite3.Row) -> str:
     )
 
 async def top_up_balance_and_notify(driver_id: int, amount: int):
-    """Bazani yangilab, haydovchiga push yuboradi."""
-    with closing(db()) as conn, conn:
+    with closing(db()) as conn:
         conn.execute("UPDATE drivers SET balance = balance + ? WHERE driver_id=?", (amount, driver_id))
         conn.commit()
         new_bal = conn.execute("SELECT balance FROM drivers WHERE driver_id=?", (driver_id,)).fetchone()
-        new_bal_value = int(new_bal["balance"]) if new_bal else amount
-    # push
+        new_bal_value = int(new_bal["balance"]) if new_bal and new_bal["balance"] is not None else amount
     try:
         await bot.send_message(
             driver_id,
@@ -271,9 +278,10 @@ async def start_cmd(message: Message, state: FSMContext):
 # =======================
 @router.message(F.text == "👤 Мижоз")
 async def role_customer(message: Message):
-    with closing(db()) as conn, conn:
+    with closing(db()) as conn:
         conn.execute("INSERT OR IGNORE INTO customers(user_id, username, phone, status) VALUES(?,?,?,?)",
                      (message.from_user.id, f"@{message.from_user.username}" if message.from_user.username else None, None, "active"))
+        conn.commit()
     await message.answer("✅ Сиз мижоз сифатида рўйхатдан ўтдингиз!", reply_markup=customer_menu_kb())
 
 @router.message(F.text == "🚖 Ҳайдовчи")
@@ -293,14 +301,14 @@ async def driver_save_phone(message: Message, state: FSMContext):
     with closing(db()) as conn:
         old = conn.execute("SELECT driver_id FROM drivers WHERE driver_id=?", (message.from_user.id,)).fetchone()
 
-    with closing(db()) as conn, conn:
+    with closing(db()) as conn:
         if old is None:
             conn.execute(
                 "INSERT INTO drivers(driver_id, username, phone, balance, status) VALUES(?,?,?,?,?)",
                 (message.from_user.id, f"@{uname}" if uname else None, phone, 99000, "active")
             )
+            conn.commit()
             await message.answer("🎉 Янги рўйхатдан ўтганингиз учун балансингизга бонус сифатида <b>99 000</b> сўм тўлдирилди!")
-            # notify admins about new driver
             for aid in ADMIN_IDS:
                 try:
                     await bot.send_message(aid, f"🚨 Янги ҳайдовчи рўйхатдан ўтди: @{uname or message.from_user.id} | ID: {message.from_user.id}")
@@ -311,6 +319,7 @@ async def driver_save_phone(message: Message, state: FSMContext):
                 "UPDATE drivers SET username=?, phone=? WHERE driver_id=?",
                 (f"@{uname}" if uname else None, phone, message.from_user.id)
             )
+            conn.commit()
 
     await state.clear()
     await message.answer("✅ Рўйхатдан ўтдингиз!", reply_markup=driver_menu_kb())
@@ -320,7 +329,6 @@ async def driver_save_phone(message: Message, state: FSMContext):
 # =======================
 @router.message(F.text == "📝 Янгидан буюртма")
 async def new_order(message: Message, state: FSMContext):
-    # check blocked
     with closing(db()) as conn:
         cust = conn.execute("SELECT status FROM customers WHERE user_id=?", (message.from_user.id,)).fetchone()
         drv = conn.execute("SELECT status FROM drivers WHERE driver_id=?", (message.from_user.id,)).fetchone()
@@ -331,27 +339,35 @@ async def new_order(message: Message, state: FSMContext):
         await message.answer("❗ Сиз блокланган ҳайдовчисиз. Админга мурожаат қилинг.")
         return
 
-    # who creates it?
     creator_role = "driver" if drv else "customer"
     await state.update_data(creator_role=creator_role)
     await state.set_state(NewOrder.from_address)
-    await message.answer("📍 Қаердан юк олинади? Манзилни киритинг:")
+    await message.answer("📍 Қаердан юк олинади? Манзилни киритинг:", reply_markup=ReplyKeyboardRemove())
 
 @router.message(NewOrder.from_address, F.text)
 async def order_from(message: Message, state: FSMContext):
-    await state.update_data(from_address=message.text.strip())
+    text = message.text.strip()
+    if len(text) < 5:
+        await message.answer("❌ Манзил жуда қисқа — илтимос тўлиқроқ жўнатинг.")
+        return
+    await state.update_data(from_address=text)
     await state.set_state(NewOrder.to_address)
     await message.answer("📍 Қаерга юборилади? Манзилни киритинг:")
 
 @router.message(NewOrder.to_address, F.text)
 async def order_to(message: Message, state: FSMContext):
-    await state.update_data(to_address=message.text.strip())
+    text = message.text.strip()
+    if len(text) < 5:
+        await message.answer("❌ Манзил жуда қисқа — илтимос тўлиқроқ жўнатинг.")
+        return
+    await state.update_data(to_address=text)
     await state.set_state(NewOrder.cargo_type)
     await message.answer("📦 Юк турини киритинг:")
 
 @router.message(NewOrder.cargo_type, F.text)
 async def order_cargo(message: Message, state: FSMContext):
-    await state.update_data(cargo_type=message.text.strip())
+    text = message.text.strip()
+    await state.update_data(cargo_type=text)
     await state.set_state(NewOrder.car_type)
     await message.answer("🚘 Қайси машина керак? Тугмалардан танланг:", reply_markup=car_type_kb())
 
@@ -362,18 +378,18 @@ async def order_car(message: Message, state: FSMContext):
         return
     if message.text == "⬅️ Бекор қилиш":
         await state.clear()
-        # decide menu
         with closing(db()) as conn:
             drv = conn.execute("SELECT * FROM drivers WHERE driver_id=?", (message.from_user.id,)).fetchone()
         await message.answer("❌ Буюртма бекор қилинди.", reply_markup=driver_menu_kb() if drv else customer_menu_kb())
         return
     await state.update_data(car_type=message.text)
     await state.set_state(NewOrder.cargo_weight)
-    await message.answer("⚖️ Юк оғирлигини киритинг (кг):", reply_markup=ReplyKeyboardMarkup(keyboard=[[]], resize_keyboard=True))
+    await message.answer("⚖️ Юк оғирлигини киритинг (кг):", reply_markup=ReplyKeyboardRemove())
 
 @router.message(NewOrder.cargo_weight, F.text)
 async def order_weight(message: Message, state: FSMContext):
-    val = message.text.strip().replace(",", ".")
+    txt = message.text.strip()
+    val = txt.replace(",", ".")
     if not re.match(r"^\d+(\.\d+)?$", val):
         await message.answer("❌ Фақат рақам киритинг (масалан: 150 ёки 75.5).")
         return
@@ -402,7 +418,7 @@ async def order_phone(message: Message, state: FSMContext):
     customer_username = f"@{uname}" if uname else f"id:{message.from_user.id}"
     creator_role = data.get("creator_role", "customer")
 
-    with closing(db()) as conn, conn:
+    with closing(db()) as conn:
         conn.execute("""
             INSERT INTO orders(
                 customer_id, from_address, to_address, cargo_type, car_type, cargo_weight, date,
@@ -416,10 +432,11 @@ async def order_phone(message: Message, state: FSMContext):
             data["cargo_weight"], now,
             customer_username, phone, creator_role
         ))
+        conn.commit()
         order_id = conn.execute("SELECT last_insert_rowid() AS id").fetchone()["id"]
-        # upsert customer info
         conn.execute("INSERT OR REPLACE INTO customers(user_id, username, phone, status) VALUES(?,?,?, COALESCE((SELECT status FROM customers WHERE user_id=?), 'active'))",
                      (message.from_user.id, customer_username, phone, message.from_user.id))
+        conn.commit()
 
     await state.clear()
     await message.answer(
@@ -427,7 +444,6 @@ async def order_phone(message: Message, state: FSMContext):
         reply_markup=driver_menu_kb() if creator_role=="driver" else customer_menu_kb()
     )
 
-    # notify admins to set commission
     with closing(db()) as conn:
         order = conn.execute("SELECT * FROM orders WHERE id=?", (order_id,)).fetchone()
 
@@ -454,27 +470,31 @@ async def order_phone(message: Message, state: FSMContext):
 @router.callback_query(F.data.startswith("setfee:"))
 async def set_fee(callback: CallbackQuery):
     if callback.from_user.id not in ADMIN_IDS:
-        await callback.answer("Фақат админлар учун.", show_alert=True); return
+        await callback.answer("Фақат админлар учун.", show_alert=True)
+        return
     try:
         _, oid, fee = callback.data.split(":")
         order_id = int(oid); fee = int(fee)
     except Exception:
-        await callback.answer("Нотўғри маълумот.", show_alert=True); return
+        await callback.answer("Нотўғри маълумот.", show_alert=True)
+        return
 
-    with closing(db()) as conn, conn:
+    with closing(db()) as conn:
         row = conn.execute("SELECT * FROM orders WHERE id=?", (order_id,)).fetchone()
         if not row:
-            await callback.answer("Буюртма топилмади.", show_alert=True); return
+            await callback.answer("Буюртма топилмади.", show_alert=True)
+            return
         if row["status"] != "pending_fee":
-            await callback.answer("Комиссия аллақачон белгиланган.", show_alert=True); return
+            await callback.answer("Комиссия аллақачон белгиланган.", show_alert=True)
+            return
         conn.execute("UPDATE orders SET commission=?, status='open' WHERE id=?", (fee, order_id))
+        conn.commit()
 
     await callback.answer("Комиссия ўрнатилди. Ҳайдовчиларга юборилди.", show_alert=True)
     try:
         await callback.message.edit_reply_markup(reply_markup=None)
     except Exception:
         pass
-
     with closing(db()) as conn:
         order = conn.execute("SELECT * FROM orders WHERE id=?", (order_id,)).fetchone()
     await push_new_order_to_drivers(order)
@@ -487,16 +507,18 @@ async def free_orders(message: Message):
     with closing(db()) as conn:
         d = conn.execute("SELECT status FROM drivers WHERE driver_id=?", (message.from_user.id,)).fetchone()
     if not d:
-        await message.answer("❌ Ҳайдовчи сифатида рўйхатдан ўтинг.", reply_markup=role_kb()); return
+        await message.answer("❌ Ҳайдовчи сифатида рўйхатдан ўтинг.", reply_markup=role_kb())
+        return
     if d["status"] == "blocked":
-        await message.answer("❗ Сиз блоклангансиз. Админ билан боғланинг."); return
+        await message.answer("❗ Сиз блоклангансиз. Админ билан боғланинг.")
+        return
 
     with closing(db()) as conn:
         rows = conn.execute("SELECT * FROM orders WHERE status='open' ORDER BY id DESC LIMIT 20").fetchall()
     if not rows:
-        await message.answer("📭 Ҳозирча бўш буюртма йўқ."); return
+        await message.answer("📭 Ҳозирча бўш буюртма йўқ.")
+        return
     for r in rows:
-        fee = r["commission"] or 0
         kb = InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text="✅ Қабул қилиш", callback_data=f"accept:{r['id']}"),
              InlineKeyboardButton(text="❌ Рад этиш", callback_data=f"reject:{r['id']}")]
@@ -510,22 +532,27 @@ async def accept_order(callback: CallbackQuery):
     with closing(db()) as conn:
         d = conn.execute("SELECT balance, phone, username, status FROM drivers WHERE driver_id=?", (callback.from_user.id,)).fetchone()
         if not d:
-            await callback.answer("Ҳайдовчи сифатида рўйхатдан ўтинг.", show_alert=True); return
+            await callback.answer("Ҳайдовчи сифатида рўйхатдан ўтинг.", show_alert=True)
+            return
         if d["status"] == "blocked":
-            await callback.answer("❗ Сиз блоклангансиз. Админ билан боғланинг.", show_alert=True); return
+            await callback.answer("❗ Сиз блоклангансиз. Админ билан боғланинг.", show_alert=True)
+            return
         order = conn.execute("SELECT * FROM orders WHERE id=?", (order_id,)).fetchone()
 
     if not order or order["status"] != "open":
-        await callback.answer("❌ Буюртма қолмаган ёки аллақачон олинган.", show_alert=True); return
+        await callback.answer("❌ Буюртма қолмаган ёки аллақачон олинган.", show_alert=True)
+        return
 
     fee = int(order["commission"] or 0)
     if (d["balance"] or 0) < fee:
-        await callback.answer(f"❌ Балансингиз етарли эмас. Керак: {fee} сўм.", show_alert=True); return
+        await callback.answer(f"❌ Балансингиз етарли эмас. Керак: {fee} сўм.", show_alert=True)
+        return
 
-    with closing(db()) as conn, conn:
+    with closing(db()) as conn:
         row = conn.execute("SELECT status FROM orders WHERE id=?", (order_id,)).fetchone()
         if not row or row["status"] != "open":
-            await callback.answer("❌ Кечикдингиз, буюртма банд бўлди.", show_alert=True); return
+            await callback.answer("❌ Кечикдингиз, буюртма банд бўлди.", show_alert=True)
+            return
         conn.execute("UPDATE orders SET status='taken', driver_id=? WHERE id=? AND status='open'", (callback.from_user.id, order_id))
         conn.execute("UPDATE drivers SET balance = balance - ? WHERE driver_id=?", (fee, callback.from_user.id))
         conn.commit()
@@ -536,22 +563,22 @@ async def accept_order(callback: CallbackQuery):
     except Exception:
         pass
 
-    # send details to driver and customer
     with closing(db()) as conn:
         order = conn.execute("SELECT * FROM orders WHERE id=?", (order_id,)).fetchone()
         d_info = conn.execute("SELECT username, phone FROM drivers WHERE driver_id=?", (callback.from_user.id,)).fetchone()
-    phone_line = f"📞 Телефон: <b>{order['customer_phone']}</b>\n" if order["customer_phone"] else ""
-    username_line = f"👤 Telegram: <b>{order['customer_username']}</b>\n"
+
     complete_kb = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="✅ Завершить заказ / Буюртмани якунлаш", callback_data=f"complete:{order_id}")]
     ])
-    await bot.send_message(
-        callback.from_user.id,
-        "🚚 Буюртма маълумотлари (ҳайдовчи учун):\n" + format_order_row(order),
-        reply_markup=complete_kb
-    )
+    try:
+        await bot.send_message(
+            callback.from_user.id,
+            "🚚 Буюртма маълумотлари (ҳайдовчи учун):\n" + format_order_row(order),
+            reply_markup=complete_kb
+        )
+    except Exception:
+        pass
 
-    # notify customer
     driver_username = d_info["username"] or f"id:{callback.from_user.id}"
     driver_phone = d_info["phone"] or "телефон не указан"
     try:
@@ -569,11 +596,14 @@ async def complete_order(callback: CallbackQuery):
     with closing(db()) as conn:
         order = conn.execute("SELECT * FROM orders WHERE id=?", (order_id,)).fetchone()
         if not order:
-            await callback.answer("❌ Буюртма топилмади.", show_alert=True); return
+            await callback.answer("❌ Буюртма топилмади.", show_alert=True)
+            return
         if order["driver_id"] != callback.from_user.id:
-            await callback.answer("❌ Фақат ушбу буюртмани олиб бормоқчи бўлган ҳайдовчи якунлай олади.", show_alert=True); return
+            await callback.answer("❌ Фақат ушбу буюртмани олиб бормоқчи бўлган ҳайдовчи якунлай олади.", show_alert=True)
+            return
         if order["status"] != "taken":
-            await callback.answer("❌ Буюртма якунланмаган ёки ҳолати мувофиқ эмас.", show_alert=True); return
+            await callback.answer("❌ Буюртма якунланмаган ёки ҳолати мувофиқ эмас.", show_alert=True)
+            return
         driver = conn.execute("SELECT username, phone FROM drivers WHERE driver_id=?", (callback.from_user.id,)).fetchone()
         conn.execute("UPDATE orders SET status='done' WHERE id=?", (order_id,))
         conn.commit()
@@ -614,7 +644,7 @@ async def driver_balance(message: Message):
 
 @router.message(F.text == "📞 Админ билан боғланиш")
 async def contact_admin(message: Message):
-    admins = ", ".join([f"<a href='tg://user?id={aid}'>@zaaaza13</a>" for aid in ADMIN_IDS])
+    admins = ", ".join([f"<a href='tg://user?id={aid}'>Admin</a>" for aid in ADMIN_IDS])
     await message.answer(f"📞 Админлар билан боғланиш: {admins}", disable_web_page_preview=True)
 
 # =======================
@@ -627,7 +657,8 @@ async def all_orders(message: Message):
     with closing(db()) as conn:
         rows = conn.execute("SELECT * FROM orders ORDER BY id DESC LIMIT 50").fetchall()
     if not rows:
-        await message.answer("📭 Буюртмалар йўқ."); return
+        await message.answer("📭 Буюртмалар йўқ.")
+        return
     for r in rows:
         await message.answer(format_order_row(r))
 
@@ -638,7 +669,8 @@ async def list_drivers_admin(message: Message):
     with closing(db()) as conn:
         rows = conn.execute("SELECT * FROM drivers ORDER BY driver_id DESC").fetchall()
     if not rows:
-        await message.answer("📭 Ҳайдовчилар йўқ."); return
+        await message.answer("📭 Ҳайдовчилар йўқ.")
+        return
     for r in rows:
         status = r["status"] or "active"
         text = f"🆔 {r['driver_id']} | {r['username'] or '—'} | 📞 {r['phone'] or '—'} | 💰 {int(r['balance'] or 0)} сўм | Статус: <b>{status}</b>"
@@ -655,7 +687,8 @@ async def list_customers_admin(message: Message):
     with closing(db()) as conn:
         rows = conn.execute("SELECT * FROM customers ORDER BY user_id DESC").fetchall()
     if not rows:
-        await message.answer("📭 Мижозлар йўқ."); return
+        await message.answer("📭 Мижозлар йўқ.")
+        return
     for r in rows:
         status = r["status"] or "active"
         text = f"🆔 {r['user_id']} | {r['username'] or '—'} | 📞 {r['phone'] or '—'} | Статус: <b>{status}</b>"
@@ -665,14 +698,14 @@ async def list_customers_admin(message: Message):
             kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="✅ Блокдан чиқариш", callback_data=f"cust_unblock:{r['user_id']}")]])
         await message.answer(text, reply_markup=kb)
 
-# block/unblock callbacks
 @router.callback_query(F.data.startswith("drv_block:"))
 async def drv_block(callback: CallbackQuery):
     if callback.from_user.id not in ADMIN_IDS:
         await callback.answer(); return
     driver_id = int(callback.data.split(":")[1])
-    with closing(db()) as conn, conn:
+    with closing(db()) as conn:
         conn.execute("UPDATE drivers SET status='blocked' WHERE driver_id=?", (driver_id,))
+        conn.commit()
     await callback.answer(f"🔒 {driver_id} блокланди.", show_alert=True)
     try:
         await bot.send_message(driver_id, "🚫 Сиз админ томонидан блокландингиз. Илтимос админ билан боғланинг.")
@@ -688,8 +721,9 @@ async def drv_unblock(callback: CallbackQuery):
     if callback.from_user.id not in ADMIN_IDS:
         await callback.answer(); return
     driver_id = int(callback.data.split(":")[1])
-    with closing(db()) as conn, conn:
+    with closing(db()) as conn:
         conn.execute("UPDATE drivers SET status='active' WHERE driver_id=?", (driver_id,))
+        conn.commit()
     await callback.answer(f"✅ {driver_id} блокдан чиқарилди.", show_alert=True)
     try:
         await bot.send_message(driver_id, "✅ Сиз блокдан чиқарилдингиз. Ботдан фойдаланишингиз мумкин.")
@@ -705,8 +739,9 @@ async def cust_block(callback: CallbackQuery):
     if callback.from_user.id not in ADMIN_IDS:
         await callback.answer(); return
     user_id = int(callback.data.split(":")[1])
-    with closing(db()) as conn, conn:
+    with closing(db()) as conn:
         conn.execute("UPDATE customers SET status='blocked' WHERE user_id=?", (user_id,))
+        conn.commit()
     await callback.answer(f"🔒 Мижоз {user_id} блокланди.", show_alert=True)
     try:
         await bot.send_message(user_id, "🚫 Сизни админ томонидан блоклашди. Илтимос админ билан боғланинг.")
@@ -722,8 +757,9 @@ async def cust_unblock(callback: CallbackQuery):
     if callback.from_user.id not in ADMIN_IDS:
         await callback.answer(); return
     user_id = int(callback.data.split(":")[1])
-    with closing(db()) as conn, conn:
+    with closing(db()) as conn:
         conn.execute("UPDATE customers SET status='active' WHERE user_id=?", (user_id,))
+        conn.commit()
     await callback.answer(f"✅ Мижоз {user_id} блокдан чиқарилди.", show_alert=True)
     try:
         await bot.send_message(user_id, "✅ Сиз блокдан чиқарилдингиз. Ботдан фойдаланишингиз мумкин.")
@@ -735,7 +771,7 @@ async def cust_unblock(callback: CallbackQuery):
         pass
 
 # =======================
-# ADMIN: BALANCE TOPUP (with push)
+# ADMIN: BALANCE TOPUP (admin-driven) - kept
 # =======================
 @router.message(F.text == "💵 Баланс тўлдириш")
 async def admin_topup_start(message: Message, state: FSMContext):
@@ -801,6 +837,219 @@ async def topup_custom_amount(message: Message, state: FSMContext):
     await state.clear()
     await top_up_balance_and_notify(driver_id, amount)
     await message.answer(f"✅ Баланс {driver_id} учун <b>{amount}</b> сўмга тўлдирилди.", reply_markup=admin_menu_kb())
+
+# =======================
+# UNIFIED "💳 Баланс тўлдириш (квитансия)" handler (driver or admin)
+# =======================
+@router.message(F.text == "💳 Баланс тўлдириш (квитансия)")
+async def unified_receipt_entry(message: Message):
+    # if driver -> ask to send receipt photo
+    with closing(db()) as conn:
+        drv = conn.execute("SELECT driver_id FROM drivers WHERE driver_id=?", (message.from_user.id,)).fetchone()
+    if drv:
+        await message.answer(
+            "💳 Баланс тўлдириш (квитансия)\n\n"
+            "Илтимос, тўловни амалга оширгандан сўнг қуйидаги картага скриншот (квитанция) юборинг:\n\n"
+            "<b>8600 1234 5678 9012</b>"
+        )
+        return
+
+    # if admin -> show admin topup UI (same as admin_topup_start)
+    if message.from_user.id in ADMIN_IDS:
+        with closing(db()) as conn:
+            rows = conn.execute("SELECT driver_id, username FROM drivers").fetchall()
+        if not rows:
+            await message.answer("📭 Ҳайдовчилар йўқ."); 
+            return
+        kb = InlineKeyboardMarkup(
+            inline_keyboard=[[InlineKeyboardButton(
+                text=f"{r['username'] or r['driver_id']}",
+                callback_data=f"topup:{r['driver_id']}")] for r in rows]
+        )
+        await message.answer("👤 Қайси ҳайдовчига баланс қўшасиз?", reply_markup=kb)
+        return
+
+    await message.answer("❗ Бу функция фақат ҳайдовчилар ва админлар учун.")
+
+# =======================
+# PHOTO (receipt) handler — save receipt and forward to admins
+# =======================
+@router.message(F.photo)
+async def handle_receipt_and_forward(message: Message):
+    # Only accept receipts from drivers (who are registered)
+    with closing(db()) as conn:
+        drv = conn.execute("SELECT driver_id, username, phone FROM drivers WHERE driver_id=?", (message.from_user.id,)).fetchone()
+    if not drv:
+        # ignore photos from non-drivers (or optionally notify)
+        return
+
+    file_id = message.photo[-1].file_id
+    driver_id = message.from_user.id
+
+    # save receipt to DB
+    with closing(db()) as conn:
+        conn.execute("INSERT INTO receipts(driver_id, file_id, status) VALUES(?,?, 'pending')", (driver_id, file_id))
+        conn.commit()
+        receipt_id = conn.execute("SELECT last_insert_rowid() AS id").fetchone()["id"]
+
+    caption = (
+        f"🧾 <b>Новая квитанция #{receipt_id}</b>\n"
+        f"🧑‍✈️ Haydovchi: {drv['username'] or message.from_user.full_name}\n"
+        f"📞 ID: {driver_id}\n\n"
+        f"Қабул қилинган квитанцияни тасдиқланг ёки рад этинг."
+    )
+
+    # Inline buttons for admin: predefined amounts + other + reject
+    kb = InlineKeyboardBuilder()
+    kb.button(text="+5 000", callback_data=f"approve_receipt:{receipt_id}:5000")
+    kb.button(text="+10 000", callback_data=f"approve_receipt:{receipt_id}:10000")
+    kb.button(text="+15 000", callback_data=f"approve_receipt:{receipt_id}:15000")
+    kb.button(text="✍️ Бошқа сумма", callback_data=f"approve_receipt_other:{receipt_id}")
+    kb.button(text="❌ Рад этиш", callback_data=f"reject_receipt:{receipt_id}")
+    kb.adjust(2)
+
+    for aid in ADMIN_IDS:
+        try:
+            await bot.send_photo(chat_id=aid, photo=file_id, caption=caption, reply_markup=kb.as_markup())
+        except Exception:
+            pass
+
+    await message.answer("📩 Квитанция админга юборилди. Тез орада текширилади.")
+
+# =======================
+# Admin callbacks for receipts
+# =======================
+@router.callback_query(F.data.startswith("approve_receipt:"))
+async def approve_receipt_fixed(callback: CallbackQuery):
+    if callback.from_user.id not in ADMIN_IDS:
+        await callback.answer("Фақат админлар учун.", show_alert=True)
+        return
+    try:
+        _, receipt_id_s, amount_s = callback.data.split(":")
+        receipt_id = int(receipt_id_s); amount = int(amount_s)
+    except Exception:
+        await callback.answer("Нотўғри маълумот.", show_alert=True)
+        return
+
+    with closing(db()) as conn:
+        rec = conn.execute("SELECT * FROM receipts WHERE id=?", (receipt_id,)).fetchone()
+        if not rec:
+            await callback.answer("Квитанция топилмади.", show_alert=True)
+            return
+        if rec["status"] != "pending":
+            await callback.answer("Квитанция аллақачон кўриб чиқилган.", show_alert=True)
+            return
+        # mark approved
+        conn.execute("UPDATE receipts SET status='approved' WHERE id=?", (receipt_id,))
+        # add to driver's balance
+        conn.execute("UPDATE drivers SET balance = COALESCE(balance,0) + ? WHERE driver_id=?", (amount, rec["driver_id"]))
+        conn.commit()
+
+    # remove buttons on admin message
+    try:
+        await callback.message.edit_reply_markup(reply_markup=None)
+    except Exception:
+        pass
+
+    await callback.answer(f"✅ {amount} сўм — қўшилди.", show_alert=True)
+
+    # notify driver
+    try:
+        await bot.send_message(rec["driver_id"], f"✅ Сиз юборган квитанция тасдиқланди. Балансингизга +{amount} сўм қўшилди.")
+    except Exception:
+        pass
+
+@router.callback_query(F.data.startswith("approve_receipt_other:"))
+async def approve_receipt_other(callback: CallbackQuery, state: FSMContext):
+    if callback.from_user.id not in ADMIN_IDS:
+        await callback.answer("Фақат админлар учун.", show_alert=True)
+        return
+    try:
+        _, receipt_id_s = callback.data.split(":")
+        receipt_id = int(receipt_id_s)
+    except Exception:
+        await callback.answer("Нотўғри маълумот.", show_alert=True)
+        return
+
+    # store receipt_id in admin state and ask for custom amount
+    await state.update_data(receipt_id=receipt_id)
+    await state.set_state(ReceiptApproval.custom_amount)
+    await callback.message.answer("✍️ Иltimos, қўшиладиган суммани сўмда (бутун рақам) киритинг:")
+    await callback.answer()
+
+@router.message(ReceiptApproval.custom_amount, F.text)
+async def receipt_custom_amount_input(message: Message, state: FSMContext):
+    if message.from_user.id not in ADMIN_IDS:
+        return
+    txt = message.text.strip().replace(" ", "")
+    if not txt.isdigit():
+        await message.answer("❗ Иложи борича фақат бутун сони киритинг (масалан: 75000).")
+        return
+    amount = int(txt)
+    data = await state.get_data()
+    receipt_id = data.get("receipt_id")
+    if receipt_id is None:
+        await message.answer("Ички хатолик — квитансия ID топилмади.")
+        await state.clear()
+        return
+
+    with closing(db()) as conn:
+        rec = conn.execute("SELECT * FROM receipts WHERE id=?", (receipt_id,)).fetchone()
+        if not rec:
+            await message.answer("Квитанция топилмади.")
+            await state.clear()
+            return
+        if rec["status"] != "pending":
+            await message.answer("Квитанция аллақачон кўриб чиқилган.")
+            await state.clear()
+            return
+        # approve & update balance
+        conn.execute("UPDATE receipts SET status='approved' WHERE id=?", (receipt_id,))
+        conn.execute("UPDATE drivers SET balance = COALESCE(balance,0) + ? WHERE driver_id=?", (amount, rec["driver_id"]))
+        conn.commit()
+
+    # notify admin & driver
+    await message.answer(f"✅ Квитанция тасдиқланди ва {amount} сўм қўшилди.")
+    try:
+        await bot.send_message(rec["driver_id"], f"✅ Сиз юборган квитанция тасдиқланди. Балансингизга +{amount} сўм қўшилди.")
+    except Exception:
+        pass
+
+    await state.clear()
+
+@router.callback_query(F.data.startswith("reject_receipt:"))
+async def reject_receipt_callback(callback: CallbackQuery):
+    if callback.from_user.id not in ADMIN_IDS:
+        await callback.answer("Фақат админлар учун.", show_alert=True)
+        return
+    try:
+        _, receipt_id_s = callback.data.split(":")
+        receipt_id = int(receipt_id_s)
+    except Exception:
+        await callback.answer("Нотўғри маълумот.", show_alert=True)
+        return
+
+    with closing(db()) as conn:
+        rec = conn.execute("SELECT * FROM receipts WHERE id=?", (receipt_id,)).fetchone()
+        if not rec:
+            await callback.answer("Квитанция топилмади.", show_alert=True)
+            return
+        if rec["status"] != "pending":
+            await callback.answer("Квитанция аллақачон кўриб чиқилган.", show_alert=True)
+            return
+        conn.execute("UPDATE receipts SET status='rejected' WHERE id=?", (receipt_id,))
+        conn.commit()
+
+    try:
+        await callback.message.edit_reply_markup(reply_markup=None)
+    except Exception:
+        pass
+
+    await callback.answer("❌ Квитанция рад этилди.", show_alert=True)
+    try:
+        await bot.send_message(rec["driver_id"], "❌ Сиз юборган квитанция рад этилди. Илтимос, квитанцияни қайта юборинг.")
+    except Exception:
+        pass
 
 # =======================
 # HOME BUTTON
