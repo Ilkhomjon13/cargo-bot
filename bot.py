@@ -1184,7 +1184,7 @@ async def show_profile(message: Message):
                 f"👤 Исм: {driver['full_name'] or '—'}\n"
                 f"📞 Телефон: {driver['phone'] or '—'}\n"
                 f"🚗 Машина: {driver['car_model'] or '—'}\n"
-                f"💳 Баланс: {driver['balance'] or 0} сўм\n"
+                f"💳 Баланс: {format_sum(driver['balance'] or 0)} сўм\n"
                 f"📌 Статус: {driver['status'] or '—'}\n"
             )
             await message.answer(text, reply_markup=driver_menu_kb())
