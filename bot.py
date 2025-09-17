@@ -293,7 +293,7 @@ async def push_new_order_to_drivers(order_row):
         f"📦 {order_row['cargo_type']}\n"
         f"🚘 {order_row['car_type']}\n"
         f"⚖️ {order_row['cargo_weight']} кг\n"
-        f"💵 Комиссия: <b>{fee}</b> сўм\n\n"
+        f"💵 Комиссия: <b>{format_sum(fee)}</b> сўм\n\n"
         f"Биринчи бўлиб қабул қилган ҳайдовчига бириктирилади."
     )
     for did in await list_active_driver_ids():
@@ -314,7 +314,7 @@ def format_order_row(r) -> str:
         f"🚘 {r['car_type']}\n"
         f"⚖️ {r['cargo_weight']} кг\n"
         f"📊 Холат: {r['status']}\n"
-        f"💸 Комиссия: {fee}\n"
+        f"💸 Комиссия: {format_sum(fee)}\n"
         f"👤 {username}\n"
         f"📞 {phone}\n"
         f"{driver_line}"
@@ -425,7 +425,7 @@ async def driver_choose_car(callback: CallbackQuery, state: FSMContext):
             """, callback.from_user.id, uname, phone, full_name, choice, 99000, "active")
         for aid in ADMIN_IDS:
             try:
-                await bot.send_message(aid, f"🚨 Янги ҳайдовчи рўйхатдан ўтди: @{uname or callback.from_user.id} | ID: {callback.from_user.id}\n👤 {full_name}\n🚘 {choice}")
+                await bot.send_message(aid, f"🚨 Янги ҳайдовчи рўйхатдан ўтди: 📱 @{uname or callback.from_user.id}\n 🆔 ID: {callback.from_user.id}\n👤 {full_name}\n🚘 {choice}")
             except Exception:
                 pass
         await state.clear()
@@ -451,7 +451,7 @@ async def driver_custom_car(message: Message, state: FSMContext):
         """, message.from_user.id, uname, phone, full_name, car_model, 99000, "active")
     for aid in ADMIN_IDS:
         try:
-            await bot.send_message(aid, f"🚨 Янги ҳайдовчи рўйхатдан ўтди: @{uname or message.from_user.id} | ID: {message.from_user.id}\n👤 {full_name}\n🚘 {car_model}")
+            await bot.send_message(aid, f"🚨 Янги ҳайдовчи рўйхатдан ўтди: 📱 @{uname or message.from_user.id}\n 🆔 ID: {message.from_user.id}\n👤 {full_name}\n🚘 {car_model}")
         except Exception:
             pass
     await state.clear()
@@ -658,7 +658,7 @@ async def accept_order(callback: CallbackQuery):
 
     fee = int(order["commission"] or 0)
     if (d["balance"] or 0) < fee:
-        await callback.answer(f"❌ Балансингиз етарли эмас. Керак: {fee} сўм.", show_alert=True); return
+        await callback.answer(f"❌ Балансингиз етарли эмас. Керак: {format_sum(fee)} сўм.", show_alert=True); return
 
     # Assign order to driver atomically
     async with pool.acquire() as conn:
@@ -909,7 +909,13 @@ async def list_drivers_admin(message: Message):
         return
     for r in rows:
         status = r["status"] or "active"
-        text = f"🆔 {r['driver_id']}\n | {r['username'] or '—'}\n | 📞 {r['phone'] or '—'}\n | 💰 {format_sum(int(r['balance'] or 0))} сўм\n | Статус: <b>{status}</b>\n👤 {r['full_name'] or '—'}\n | 🚘 {r['car_model'] or '—'}"
+        text = f"🆔 {r['driver_id']}\n 
+        📱 {r['username'] or '—'}\n 
+        📞 {r['phone'] or '—'}\n 
+        💰 {format_sum(int(r['balance'] or 0))} сўм\n 
+        💤 Статус: <b>{status}</b>\n
+        👤 {r['full_name'] or '—'}\n 
+        🚘 {r['car_model'] or '—'}"
         if status == "active":
             kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="🔒 Блоклаш", callback_data=f"drv_block:{r['driver_id']}")]])
         else:
