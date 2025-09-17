@@ -909,7 +909,7 @@ async def list_drivers_admin(message: Message):
         return
     for r in rows:
         status = r["status"] or "active"
-        text = f"🆔 {r['driver_id']} | {r['username'] or '—'} | 📞 {r['phone'] or '—'} | 💰 {int(r['balance'] or 0)} сўм | Статус: <b>{status}</b>\n👤 {r['full_name'] or '—'} | 🚘 {r['car_model'] or '—'}"
+        text = f"🆔 {r['driver_id']}\n | {r['username'] or '—'}\n | 📞 {r['phone'] or '—'}\n | 💰 {format_sum(int(r['balance'] or 0))} сўм\n | Статус: <b>{status}</b>\n👤 {r['full_name'] or '—'}\n | 🚘 {r['car_model'] or '—'}"
         if status == "active":
             kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="🔒 Блоклаш", callback_data=f"drv_block:{r['driver_id']}")]])
         else:
