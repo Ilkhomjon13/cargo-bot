@@ -800,7 +800,7 @@ async def approve_receipt_fixed(callback: CallbackQuery):
         await conn.execute("UPDATE receipts SET status='approved' WHERE id=$1", receipt_id)
         await conn.execute("UPDATE drivers SET balance = COALESCE(balance,0) + $1 WHERE driver_id=$2", amount, rec["driver_id"])
     try:
-        await bot.send_message(rec["driver_id"], f"✅ Сиз юборган квитанция тасдиқланди. Балансингизга +{amount} сўм қўшилди.")
+        await bot.send_message(rec["driver_id"], f"✅ Сиз юборган квитанция тасдиқланди. Балансингизга +{format_sum(amount)} сўм қўшилди.")
     except Exception:
         pass
     await callback.answer(f"✅ {amount} сўм — қўшилди.", show_alert=True)
