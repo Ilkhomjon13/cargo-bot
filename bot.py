@@ -829,7 +829,7 @@ async def receipt_custom_amount_input(message: Message, state: FSMContext):
         return
     txt = message.text.strip().replace(" ", "")
     if not txt.isdigit():
-        await message.answer("❗ Иложи борича фақат бутун сони киритинг (масалан: 75000).")
+        await message.answer("❗ Иложи борича фақат бутун сони киритинг (масалан: 75 000).")
         return
     amount = int(txt)
     data = await state.get_data()
@@ -851,10 +851,10 @@ async def receipt_custom_amount_input(message: Message, state: FSMContext):
         await conn.execute("UPDATE receipts SET status='approved' WHERE id=$1", receipt_id)
         await conn.execute("UPDATE drivers SET balance = COALESCE(balance,0) + $1 WHERE driver_id=$2", amount, rec["driver_id"])
     try:
-        await bot.send_message(rec["driver_id"], f"✅ Сиз юборган квитанция тасдиқланди. Балансингизга +{amount} сўм қўшилди.")
+        await bot.send_message(rec["driver_id"], f"✅ Сиз юборган квитанция тасдиқланди. Балансингизга +{format_sum(amount)} сўм қўшилди.")
     except Exception:
         pass
-    await message.answer(f"✅ Квитанция тасдиқланди ва {amount} сўм қўшилди.")
+    await message.answer(f"✅ Квитанция тасдиқланди ва {format_sum(amount)} сўм қўшилди.")
     await state.clear()
 
 @router.callback_query(F.data.startswith("reject_receipt:"))
@@ -1113,9 +1113,9 @@ async def adm_topup_amount_choice(callback: CallbackQuery, state: FSMContext):
     async with pool.acquire() as conn:
         await conn.execute("UPDATE drivers SET balance = COALESCE(balance,0) + $1 WHERE driver_id=$2", amount, driver_id)
 
-    await callback.answer(f"✅ Баланс {amount} сўм қўшилди.", show_alert=True)
+    await callback.answer(f"✅ Баланс {format_sum(amount)} сўм қўшилди.", show_alert=True)
     try:
-        await bot.send_message(driver_id, f"💳 Балансингизга +{amount} сўм қўшилди (админ).")
+        await bot.send_message(driver_id, f"💳 Балансингизга +{format_sum(amount)} сўм қўшилди (админ).")
     except Exception:
         pass
     await state.clear()
@@ -1126,7 +1126,7 @@ async def adm_topup_custom_amount(message: Message, state: FSMContext):
         return
     txt = message.text.strip().replace(" ", "")
     if not txt.isdigit():
-        await message.answer("❗ Фақат бутун рақам киритинг (масалан: 75000).")
+        await message.answer("❗ Фақат бутун рақам киритинг (масалан: 75 000).")
         return
     amount = int(txt)
     data = await state.get_data()
@@ -1139,9 +1139,9 @@ async def adm_topup_custom_amount(message: Message, state: FSMContext):
     async with pool.acquire() as conn:
         await conn.execute("UPDATE drivers SET balance = COALESCE(balance,0) + $1 WHERE driver_id=$2", amount, driver_id)
 
-    await message.answer(f"✅ Баланс {driver_id} учун +{amount} сўм қўшилди.", reply_markup=admin_menu_kb())
+    await message.answer(f"✅ Баланс {driver_id} учун +{format_sum(amount)} сўм қўшилди.", reply_markup=admin_menu_kb())
     try:
-        await bot.send_message(driver_id, f"💳 Админ томонидан балансингизга +{amount} сўм қўшилди.")
+        await bot.send_message(driver_id, f"💳 Админ томонидан балансингизга +{format_sum(amount)} сўм қўшилди.")
     except Exception:
         pass
     await state.clear()
