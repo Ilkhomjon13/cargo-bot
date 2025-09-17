@@ -8,8 +8,9 @@ To'liq ishlaydigan bot:
 - Kvitansiya (photo) yuklanishi va admin tomonidan tasdiqlanishi
 """
 import asyncio
-import sqlite3
+import asyncpg
 import re
+import os
 from contextlib import closing
 from datetime import datetime
 
@@ -28,10 +29,10 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 # --------------------------
 # SETTINGS: edit these
 # --------------------------
-BOT_TOKEN = "7370665741:AAEbYoKM5_S2XLDGLqO2re8hnPeAUhjSF7g"
+BOT_TOKEN = os.getenv("BOT_TOKEN")
 # add your admin IDs here (integers)
 ADMIN_IDS = {1262207928, 8011859232}
-DB_FILE = "cargoof.db"
+DB_FILE = os.getenv("DATABASE_URL")
 
 # --------------------------
 # BOT INIT
@@ -44,70 +45,57 @@ dp.include_router(router)
 # --------------------------
 # DATABASE HELPERS
 # --------------------------
-def db():
-    conn = sqlite3.connect(DB_FILE)
-    conn.row_factory = sqlite3.Row
-    return conn
+pool: asyncpg.Pool = None
 
-def init_db():
-    with closing(db()) as conn:
-        cur = conn.cursor()
-        cur.execute("""
+async def init_db():
+    global pool
+    pool = await asyncpg.create_pool(DATABASE_URL)
+
+    async with pool.acquire() as conn:
+        await conn.execute("""
         CREATE TABLE IF NOT EXISTS drivers(
-            driver_id INTEGER PRIMARY KEY,
+            driver_id BIGINT PRIMARY KEY,
             username TEXT,
             phone TEXT,
             full_name TEXT,
             car_model TEXT,
-            balance REAL DEFAULT 0,
+            balance NUMERIC DEFAULT 0,
             status TEXT DEFAULT 'active'
         )""")
-        cur.execute("""
+        await conn.execute("""
         CREATE TABLE IF NOT EXISTS customers(
-            user_id INTEGER PRIMARY KEY,
+            user_id BIGINT PRIMARY KEY,
             username TEXT,
             phone TEXT,
             full_name TEXT,
             status TEXT DEFAULT 'active'
         )""")
-        cur.execute("""
+        await conn.execute("""
         CREATE TABLE IF NOT EXISTS orders(
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            customer_id INTEGER,
+            id SERIAL PRIMARY KEY,
+            customer_id BIGINT,
             from_address TEXT,
             to_address TEXT,
             cargo_type TEXT,
             car_type TEXT,
-            cargo_weight REAL,
+            cargo_weight NUMERIC,
             date TEXT,
-            status TEXT DEFAULT 'pending_fee', -- pending_fee/open/taken/done
-            driver_id INTEGER,
+            status TEXT DEFAULT 'pending_fee',
+            driver_id BIGINT,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             customer_username TEXT,
             customer_phone TEXT,
             commission INTEGER,
             creator_role TEXT DEFAULT 'customer'
         )""")
-        cur.execute("""
+        await conn.execute("""
         CREATE TABLE IF NOT EXISTS receipts(
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            driver_id INTEGER,
+            id SERIAL PRIMARY KEY,
+            driver_id BIGINT,
             file_id TEXT,
             status TEXT DEFAULT 'pending',
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )""")
-        conn.commit()
-def add_full_name_column():
-    conn = sqlite3.connect("cargoof.db")  # O'zingizning bazangiz nomi
-    cur = conn.cursor()
-    try:
-        cur.execute("ALTER TABLE customers ADD COLUMN full_name TEXT;")
-        print("full_name ustuni qo‘shildi!")
-    except sqlite3.OperationalError as e:
-        print("Xatolik:", e)
-    conn.commit()
-    conn.close()
-
 # --------------------------
 # KEYBOARDS
 # --------------------------
