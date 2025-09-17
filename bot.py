@@ -326,7 +326,7 @@ async def top_up_balance_and_notify(driver_id: int, amount: int):
         row = await conn.fetchrow("SELECT balance FROM drivers WHERE driver_id=$1", driver_id)
         new_bal_value = int(row["balance"]) if row and row["balance"] is not None else amount
     try:
-        await bot.send_message(driver_id, f"💳 <b>Balansingiz to‘ldirildi!</b>\n\nSizga +<b>{format_sum{amount}}</b> сўм қўшилди ✅\n📊 Жорий баланс: <b>{new_bal_value}</b> сўм")
+        await bot.send_message(driver_id, f"💳 <b>Balansingiz to‘ldirildi!</b>\n\nSizga +<b>{format_sum(amount)}</b> сўм қўшилди ✅\n📊 Жорий баланс: <b>{new_bal_value}</b> сўм")
     except Exception:
         pass
 
