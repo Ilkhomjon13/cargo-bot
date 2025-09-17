@@ -803,7 +803,7 @@ async def approve_receipt_fixed(callback: CallbackQuery):
         await bot.send_message(rec["driver_id"], f"✅ Сиз юборган квитанция тасдиқланди. Балансингизга +{format_sum(amount)} сўм қўшилди.")
     except Exception:
         pass
-    await callback.answer(f"✅ {amount} сўм — қўшилди.", show_alert=True)
+    await callback.answer(f"✅ {format_sum(amount)} сўм — қўшилди.", show_alert=True)
     try:
         await callback.message.edit_reply_markup(reply_markup=None)
     except Exception:
