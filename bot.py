@@ -309,7 +309,7 @@ def format_order_row(r) -> str:
     phone = r["customer_phone"] or "—"
     return (
         f"🆔 {r['id']} | {r['date']}\n"
-        f"      {r['from_address']} ➜ {r['to_address']}\n"
+        f"   {r['from_address']} ➜ {r['to_address']}\n"
         f"📦 {r['cargo_type']}\n"
         f"🚘 {r['car_type']}\n"
         f"⚖️ {r['cargo_weight']} кг\n"
@@ -910,12 +910,12 @@ async def list_drivers_admin(message: Message):
     for r in rows:
         status = r["status"] or "active"
         text = f"🆔 {r['driver_id']}\n 
-        📱 {r['username'] or '—'}\n 
-        📞 {r['phone'] or '—'}\n 
-        💰 {format_sum(int(r['balance'] or 0))} сўм\n 
-        💤 Статус: <b>{status}</b>\n
-        👤 {r['full_name'] or '—'}\n 
-        🚘 {r['car_model'] or '—'}"
+        f"📱 {r['username'] or '—'}\n 
+        f"📞 {r['phone'] or '—'}\n 
+        f"💰 {format_sum(int(r['balance'] or 0))} сўм\n 
+        f"💤 Статус: <b>{status}</b>\n
+        f"👤 {r['full_name'] or '—'}\n 
+        f"🚘 {r['car_model'] or '—'}"
         if status == "active":
             kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="🔒 Блоклаш", callback_data=f"drv_block:{r['driver_id']}")]])
         else:
