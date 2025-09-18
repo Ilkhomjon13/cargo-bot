@@ -969,7 +969,12 @@ async def list_customers_admin(message: Message):
         return
     for r in rows:
         status = r["status"] or "active"
-        text = f"🆔 {r['user_id']} | {r['username'] or '—'} | 📞 {r['phone'] or '—'} | Статус: <b>{status}</b>"
+        text = ( 
+        f"🆔 {r['user_id']}\n"
+        f"📱 {r['username'] or '—'}\n"
+        f"📞 {r['phone'] or '—'}\n" 
+        f"💤 Статус: <b>{status}</b>"
+        )
         if status == "active":
             kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="🔒 Блоклаш", callback_data=f"cust_block:{r['user_id']}")]])
         else:
