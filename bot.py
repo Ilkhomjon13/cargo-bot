@@ -425,7 +425,7 @@ async def driver_choose_car(callback: CallbackQuery, state: FSMContext):
             """, callback.from_user.id, uname, phone, full_name, choice, 99000, "active")
         for aid in ADMIN_IDS:
             try:
-                await bot.send_message(aid, f"🚨 Янги ҳайдовчи рўйхатдан ўтди: 📱 @{uname or callback.from_user.id}\n 🆔 ID: {callback.from_user.id}\n👤 {full_name}\n🚘 {choice}")
+                await bot.send_message(aid, f"🚨 Янги ҳайдовчи рўйхатдан ўтди:\n 📱 {uname or callback.from_user.id}\n 🆔 ID: {callback.from_user.id}\n👤 {full_name}\n🚘 {choice}")
             except Exception:
                 pass
         await state.clear()
