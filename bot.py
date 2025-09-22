@@ -31,7 +31,7 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 # --------------------------
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 # add your admin IDs here (integers)
-ADMIN_IDS = {1262207928, 8011859232}
+ADMIN_IDS = {1262207928, 7370665741}
 DATABASE_URL = os.getenv("DATABASE_URL")  # must be set in env
 
 # --------------------------
